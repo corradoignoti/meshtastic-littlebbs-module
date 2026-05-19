@@ -21,6 +21,20 @@ git submodule add https://github.com/corradoignoti/meshtastic-littlebbs-module s
 
 ### Enabling the module
 
+In `src/Modules.cpp`add:
+```cpp
+#if !MESHTASTIC_EXCLUDE_LITTLEBBS
+#include "modules/LittleBBS/LittleBBSModule.h"
+#endif
+```
+
+and in `setupModules()` method add:
+```cpp
+#if !MESHTASTIC_EXCLUDE_LITTLEBBS
+    littleBBSModule = new LittleBBSModule();
+#endif
+```
+
 In your variant's `variant.h`, add:
 
 ```cpp
