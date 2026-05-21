@@ -99,7 +99,8 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
     if (strcmp(msg, "P") == 0 || strcmp(msg, "p") == 0) {
         LOG_INFO("[LittleBBS] Received ping command, sending status");
         char reply[100];
-        snprintf(reply, sizeof(reply), "Pong! Node 0x%x is here.", ourNode);
+        static const char *pingEmoji = "\xF0\x9F\x8F\x93";
+        snprintf(reply, sizeof(reply), "%s Pong! Node %x is here and alive.", pingEmoji, ourNode);
         sendDm(mp, reply);
         return ProcessMessage::CONTINUE;
     }
@@ -114,7 +115,8 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
         }
         float snr = mp.rx_snr;
         char reply[96];
-        snprintf(reply, sizeof(reply), "Check : %d Hops away | RSSI %d | SNR %.1f", hopsAway, rssi, snr);
+        const uint32_t remoteNode = mp.from;
+        snprintf(reply, sizeof(reply), "Hi %x! You are %d hops away from me | RSSI %d | SNR %.1f", remoteNode, hopsAway, rssi, snr);
         sendDm(mp, reply);
         return ProcessMessage::CONTINUE;
     }
