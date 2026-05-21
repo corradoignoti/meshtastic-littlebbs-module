@@ -182,7 +182,7 @@ void LittleBBSModule::getNodeCoordinates(const meshtastic_MeshPacket &mp, float 
         LOG_DEBUG("[LittleBBS] No coordinates available for node 0x%x\n", mp.from);
     }
 }
-
+//This function comes as-is from https://github.com/GoatsAndMonkeys/TinyBBS
 bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t cityLen)
 {
     city[0] = '\0';
@@ -241,6 +241,7 @@ bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t ci
 }
 
 // Get a weather report to be returned for a /meteo command.
+// This original function comes from https://github.com/GoatsAndMonkeys/TinyBBS and has been modified to use the Open-Meteo API over https.
 bool LittleBBSModule::getWeatherForecast(char *buf, size_t bufLen, float lat, float lon)
 {
     if (WiFi.status() != WL_CONNECTED) {
@@ -383,7 +384,7 @@ bool LittleBBSModule::getWeatherForecast(char *buf, size_t bufLen, float lat, fl
     gwc.stop();
     return true;
 }
-
+// This function comes as-is from https://github.com/GoatsAndMonkeys/TinyBBS
 static float jsonArrayNth(const char *tag, int n)
 {
     if (!tag)
@@ -427,6 +428,7 @@ static const char *wmoToText(int code)
 }
 
 // WMO weather code to emoji (UTF-8, BMP only — 3-byte max)
+// This function comes as-is from https://github.com/GoatsAndMonkeys/TinyBBS
 static const char *wmoToEmoji(int code)
 {
     if (code == 0)
