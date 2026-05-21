@@ -255,7 +255,7 @@ bool LittleBBSModule::getWeatherForecast(char *buf, size_t bufLen, float lat, fl
              "https://api.open-meteo.com/v1/forecast"
              "?latitude=%.4f&longitude=%.4f"
              "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode"
-             "&temperature_unit=fahrenheit&timezone=auto&forecast_days=6",
+             "&temperature_unit=celsius&timezone=auto&forecast_days=6",
              lat, lon);
 
     LOG_DEBUG("[LittleBBS] MeteoForecast calling URL %s\n", url);
@@ -269,8 +269,15 @@ bool LittleBBSModule::getWeatherForecast(char *buf, size_t bufLen, float lat, fl
         return false;
     }
     mfhttp.addHeader("User-Agent", "LittleBBS/1.0");
-    int mcode = mfhttp.GET();
-    LOG_DEBUG("[LittleBBS] MeteoForecast - HTTP code=%d\n", mcode);
+    int mcode = -1;
+    for (int attempt = 1; attempt <= 4; ++attempt) {
+        mcode = mfhttp.GET();
+        LOG_DEBUG("[LittleBBS] MeteoForecast - HTTP code=%d (attempt %d/4)\n", mcode, attempt);
+        if (mcode != HTTPC_ERROR_CONNECTION_REFUSED || attempt == 4) {
+            break;
+        }
+        LOG_DEBUG("[LittleBBS] MeteoForecast - connection refused, retrying...\n");
+    }
 
     if (mcode == 200) {
         body = mfhttp.getString();
