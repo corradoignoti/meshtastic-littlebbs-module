@@ -105,6 +105,32 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
         return ProcessMessage::CONTINUE;
     }
 
+    // Respond to "QTH" with our current location if we have it, or an error message if we don't
+    if (strcmp(msg, "/QTH?") == 0 || strcmp(msg, "/qth?") == 0 || strcmp(msg, "Q") == 0 || strcmp(msg, "q") == 0) {
+        LOG_INFO("[LittleBBS] Received QTH command, sending location");
+        float lat = 0.0f, lon = 0.0f;
+        //Get our coordinates from the NodeDB - this will be based on the last position we received from the radio 
+        // (which might be our own node if we have a GPS, or might be another node if we are using that node as a proxy for our location)
+        meshtastic_PositionLite pos;
+        if (nodeDB->copyNodePosition(nodeDB->getNodeNum(), pos)) {
+            lat = pos.latitude_i / 1e7f;
+            lon = pos.longitude_i / 1e7f;
+        }
+        char reply[100];
+        if (lat != 0.0f && lon != 0.0f) {
+            char city[64];
+            if (reverseGeocode(lat, lon, city, sizeof(city))) {
+                snprintf(reply, sizeof(reply), "My location is %.4f, %.4f near %s.", lat, lon, city);
+            } else {
+                snprintf(reply, sizeof(reply), "My location is %.4f, %.4f.", lat, lon);
+            }
+        } else {
+            snprintf(reply, sizeof(reply), "Sorry, I don't know my location.");
+        }
+        sendDm(mp, reply);
+        return ProcessMessage::CONTINUE;
+    }
+
     // Respond to "test" with a message showing the signal quality
     if (strcmp(msg, "T") == 0 || strcmp(msg, "t") == 0) {
         LOG_INFO("[LittleBBS] Received test command, sending status");
@@ -140,7 +166,7 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
             LOG_INFO("[LittleBBS] Received meteo command with no city, trying to determine sender location");
 
             float lat, lon;
-            getNodeCoordinates(mp, lat, lon);
+            getRemoteNodeCoordinates(mp, lat, lon);
 
             if (lat != 0.0f && lon != 0.0f) {
                 char reply[512];
@@ -171,7 +197,7 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
 }
 
 // Get coordinates from contacting node
-void LittleBBSModule::getNodeCoordinates(const meshtastic_MeshPacket &mp, float &lat, float &lon)
+void LittleBBSModule::getRemoteNodeCoordinates(const meshtastic_MeshPacket &mp, float &lat, float &lon)
 {
     lat = 0.0f;
     lon = 0.0f;
@@ -462,6 +488,7 @@ void LittleBBSModule::sendMainMenu(const meshtastic_MeshPacket &mp)
              "Welcome to the LittleBBS!\n\n"
              "[P]ing\n"
              "[T]est\n"
+             "[Q]TH?\n"
              "[M]eteo\n\n"
              "Reply with the letter in brackets to get a response.");
     sendDm(mp, menu);

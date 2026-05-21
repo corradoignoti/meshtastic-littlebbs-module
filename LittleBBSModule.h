@@ -18,7 +18,7 @@ class LittleBBSModule : public SinglePortModule, private concurrency::OSThread
   protected:
     void sendDm(const meshtastic_MeshPacket &rx, const char *text);
     void sendMainMenu(const meshtastic_MeshPacket &mp);
-    void getNodeCoordinates(const meshtastic_MeshPacket &mp, float &lat, float &lon);
+    void getRemoteNodeCoordinates(const meshtastic_MeshPacket &mp, float &lat, float &lon);
     bool reverseGeocode(float lat, float lon, char *city, size_t cityLen);
     bool getWeatherForecast(char *buf, size_t bufLen, float lat, float lon);
 };
