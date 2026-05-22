@@ -181,15 +181,13 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
                 }
             } else {
                 sendDm(mp,
-                       "No location information available for your node. Send /meteo <city> to get the weather for that city.");
+                       "I can't determine the weather for your location. Send /meteo <city> to get the weather for that city.");
             }
 
             return ProcessMessage::CONTINUE;
         }
-        LOG_INFO("[LittleBBS] Received meteo command for city '%s', sending fake report", city);
+        LOG_INFO("[LittleBBS] Received meteo command for city '%s'.", city);
         char reply[100];
-        snprintf(reply, sizeof(reply), "The weather in %s is sunny and 25C.", city);
-        sendDm(mp, reply);
         float lat, lon;
         if (geocodeLookup(city, lat, lon)) {
             LOG_DEBUG("[LittleBBS] geocodeLookup found coordinates for city '%s': lat=%.4f lon=%.4f\n", city, lat, lon);
@@ -198,11 +196,13 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
                 sendDm(mp, reply);
             } else {
                 LOG_DEBUG("[LittleBBS] Unable to get weather forecast for city '%s' at coordinates lat=%.4f lon=%.4f\n", city, lat, lon);
-                sendDm(mp, "Unable to get weather forecast for that city.");
+                snprintf(reply, sizeof(reply), "Unable to get weather forecast for %s.", city);
+                sendDm(mp, reply);
             }
         } else {
             LOG_DEBUG("[LittleBBS] geocodeLookup unable to find coordinates for city '%s'\n", city);
-            sendDm(mp, "Unable to find that city.");
+            snprintf(reply, sizeof(reply), "Unable to find that city: %s.", city);
+            sendDm(mp, reply);
         }
         return ProcessMessage::CONTINUE;
     }
@@ -328,7 +328,7 @@ bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t ci
     char gurl[256];
     snprintf(gurl, sizeof(gurl),
              "https://nominatim.openstreetmap.org/reverse"
-             "?lat=%.4f&lon=%.4f&format=json&zoom=10&addressdetails=1",
+             "?lat=%.4f&lon=%.4f&format=json&zoom=9&addressdetails=1",
              lat, lon);
     LOG_DEBUG("[LittleBBS] geocode calling URL %s\n", gurl);
     WiFiClientSecure gwc;
