@@ -2,6 +2,8 @@
 
 A Meshtastic firmware module that provides a simple BBS (Bulletin Board System) over LoRa mesh. Users can send direct text messages to any node running this module to access commands, including a `/meteo` weather forecast feature based on the node's GPS coordinates.
 
+*** This is an experimental module and in it's in a very early stage of developmnet. Use it at your own risk. ***
+
 ## Features
 
 - Main menu via DM interaction
