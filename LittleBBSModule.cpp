@@ -373,25 +373,25 @@ bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t ci
              "https://nominatim.openstreetmap.org/reverse"
              "?lat=%.4f&lon=%.4f&format=json&zoom=9&addressdetails=1",
              lat, lon);
-    LOG_DEBUG("[LittleBBS] geocode calling URL %s\n", gurl);
+    LOG_DEBUG("[LittleBBS] reverseGeocode calling URL %s\n", gurl);
     WiFiClientSecure gwc;
     gwc.setInsecure();
     HTTPClient ghttp;
     ghttp.setConnectTimeout(2500);
     ghttp.setTimeout(3500);
     if (!ghttp.begin(gwc, gurl)) {
-        LOG_DEBUG("[LittleBBS] Geocode begin() failed");
+        LOG_DEBUG("[LittleBBS] reverseGeocode begin() failed");
         return false;
     }
     ghttp.addHeader("User-Agent", "LittleBBS/1.0");
     int gcode = ghttp.GET();
     if (gcode < 0) {
-        LOG_WARN("[LittleBBS] Geocode - GET failed (%d): %s", gcode, ghttp.errorToString(gcode).c_str());
+        LOG_WARN("[LittleBBS] reverseGeocode - GET failed (%d): %s", gcode, ghttp.errorToString(gcode).c_str());
     }
-    LOG_DEBUG("[LittleBBS] Geocode - nominatim code=%d\n", gcode);
+    LOG_DEBUG("[LittleBBS] reverseGeocode - nominatim code=%d\n", gcode);
     if (gcode == 200) {
         String gbody = ghttp.getString();
-        LOG_DEBUG("[LittleBBS] Geocode - got response len=%u", static_cast<unsigned>(gbody.length()));
+        LOG_DEBUG("[LittleBBS] reverseGeocode - got response len=%u", static_cast<unsigned>(gbody.length()));
         const char *json = gbody.c_str();
         auto extractJsonStringValue = [](const char *jsonIn, const char *fieldName, char *out, size_t outLen) {
             if (!jsonIn || !fieldName || !out || outLen == 0) {
@@ -438,10 +438,10 @@ bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t ci
 
         extractJsonStringValue(json, "\"country\"", country, countryLen);
         if (country[0] != '\0') {
-            LOG_DEBUG("[LittleBBS] Geocode - got city='%s' country='%s'\n", city, country);
+            LOG_DEBUG("[LittleBBS] reverseGeocode - got city='%s' country='%s'\n", city, country);
         }
     } else {
-        LOG_DEBUG("[LittleBBS] Geocode - HTTP error %d\n", gcode);
+        LOG_DEBUG("[LittleBBS] reverseGeocode - HTTP error %d\n", gcode);
     }
     ghttp.end();
     gwc.stop();
