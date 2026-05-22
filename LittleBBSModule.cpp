@@ -158,7 +158,7 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
     }
 
     // Weather alert command. If no city is provided, try to infer sender location.
-    if (strncmp(msg, "/alerts", 7) == 0 || strncmp(msg, "/meteoalerts", 12) == 0) {
+    if (strncmp(msg, "/alerts", 7) == 0 || strncmp(msg, "/meteoalerts", 12) == 0 || strcmp(msg, "A") == 0 || strcmp(msg, "a") == 0) {
         const char *city = nullptr;
         if (strncmp(msg, "/alerts", 7) == 0) {
             city = msg + 7;
@@ -600,6 +600,7 @@ void LittleBBSModule::sendMainMenu(const meshtastic_MeshPacket &mp)
     char menu[200];
     snprintf(menu, sizeof(menu),
              "Welcome to the LittleBBS!\n\n"
+             "[A]lerte meteo\n"
              "[P]ing\n"
              "[T]est\n"
              "[Q]TH?\n"
