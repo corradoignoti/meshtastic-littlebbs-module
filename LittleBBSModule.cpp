@@ -190,6 +190,20 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
         char reply[100];
         snprintf(reply, sizeof(reply), "The weather in %s is sunny and 25C.", city);
         sendDm(mp, reply);
+        float lat, lon;
+        if (geocodeLookup(city, lat, lon)) {
+            LOG_DEBUG("[LittleBBS] geocodeLookup found coordinates for city '%s': lat=%.4f lon=%.4f\n", city, lat, lon);
+            if (getWeatherForecast(reply, sizeof(reply), lat, lon)) {
+                LOG_DEBUG("[LittleBBS] Got weather forecast for city '%s' at coordinates lat=%.4f lon=%.4f\n", city, lat, lon);
+                sendDm(mp, reply);
+            } else {
+                LOG_DEBUG("[LittleBBS] Unable to get weather forecast for city '%s' at coordinates lat=%.4f lon=%.4f\n", city, lat, lon);
+                sendDm(mp, "Unable to get weather forecast for that city.");
+            }
+        } else {
+            LOG_DEBUG("[LittleBBS] geocodeLookup unable to find coordinates for city '%s'\n", city);
+            sendDm(mp, "Unable to find that city.");
+        }
         return ProcessMessage::CONTINUE;
     }
 
@@ -210,6 +224,94 @@ void LittleBBSModule::getRemoteNodeCoordinates(const meshtastic_MeshPacket &mp, 
     } else {
         LOG_DEBUG("[LittleBBS] No coordinates available for node 0x%x\n", mp.from);
     }
+}
+
+bool LittleBBSModule::geocodeLookup(const char *location, float &lat, float &lon)
+{
+    lat = 0.0f;
+    lon = 0.0f;
+    bool parsedLatLon = false;
+
+    if (WiFi.status() != WL_CONNECTED) {
+        LOG_DEBUG("[LittleBBS] Geocode lookup skipped: WiFi not connected. Is WiFi enabled and configured on this node?\n");
+        return false;
+    }
+
+    char gurl[256];
+    snprintf(gurl, sizeof(gurl),
+             "https://nominatim.openstreetmap.org/search"
+             "?q=%s&format=json&limit=1",
+             location);
+    LOG_DEBUG("[LittleBBS] geocodeLookup calling URL %s\n", gurl);
+    WiFiClientSecure gwc;
+    gwc.setInsecure();
+    HTTPClient ghttp;
+    ghttp.setConnectTimeout(2500);
+    ghttp.setTimeout(3500);
+    if (!ghttp.begin(gwc, gurl)) {
+        LOG_DEBUG("[LittleBBS] GeocodeLookup begin() failed");
+        return false;
+    }
+    ghttp.addHeader("User-Agent", "LittleBBS/1.0");
+    int gcode = ghttp.GET();
+    if (gcode < 0) {
+        LOG_WARN("[LittleBBS] GeocodeLookup - GET failed (%d): %s", gcode, ghttp.errorToString(gcode).c_str());
+    }
+    LOG_DEBUG("[LittleBBS] GeocodeLookup - nominatim code=%d\n", gcode);
+    if (gcode == 200) {
+        String gbody = ghttp.getString();
+        LOG_DEBUG("[LittleBBS] GeocodeLookup - got response len=%u", static_cast<unsigned>(gbody.length()));
+        const char *json = gbody.c_str();
+
+        auto extractJsonFloatValue = [](const char *jsonIn, const char *fieldName, float &out) {
+            if (!jsonIn || !fieldName) {
+                return false;
+            }
+
+            const char *kp = strstr(jsonIn, fieldName);
+            if (!kp) {
+                return false;
+            }
+
+            const char *cp = strchr(kp + strlen(fieldName), ':');
+            if (!cp) {
+                return false;
+            }
+            cp++;
+            while (*cp == ' ' || *cp == '\t' || *cp == '\n' || *cp == '\r') {
+                cp++;
+            }
+            if (*cp == '"') {
+                cp++;
+            }
+
+            char numbuf[24];
+            size_t i = 0;
+            while (*cp && *cp != '"' && *cp != ',' && *cp != '}' && i < sizeof(numbuf) - 1) {
+                numbuf[i++] = *cp++;
+            }
+            numbuf[i] = '\0';
+            if (i == 0) {
+                return false;
+            }
+
+            out = atof(numbuf);
+            return true;
+        };
+
+        const bool haveLat = extractJsonFloatValue(json, "\"lat\"", lat);
+        const bool haveLon = extractJsonFloatValue(json, "\"lon\"", lon);
+        parsedLatLon = haveLat && haveLon;
+        if (!haveLat || !haveLon) {
+            LOG_WARN("[LittleBBS] GeocodeLookup - missing lat/lon in response");
+        }
+        LOG_DEBUG("[LittleBBS] GeocodeLookup - got coordinates lat=%.4f lon=%.4f\n", lat, lon);
+    } else {
+        LOG_DEBUG("[LittleBBS] GeocodeLookup - HTTP error %d\n", gcode);
+    }
+    ghttp.end();
+    gwc.stop();
+    return parsedLatLon;
 }
 // Reverse geocode coordinates to get city and country using the OpenStreetMap Nominatim API
 // The original function comes from https://github.com/GoatsAndMonkeys/TinyBBS
@@ -240,6 +342,9 @@ bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t ci
     }
     ghttp.addHeader("User-Agent", "LittleBBS/1.0");
     int gcode = ghttp.GET();
+    if (gcode < 0) {
+        LOG_WARN("[LittleBBS] Geocode - GET failed (%d): %s", gcode, ghttp.errorToString(gcode).c_str());
+    }
     LOG_DEBUG("[LittleBBS] Geocode - nominatim code=%d\n", gcode);
     if (gcode == 200) {
         String gbody = ghttp.getString();
@@ -445,6 +550,7 @@ bool LittleBBSModule::getWeatherForecast(char *buf, size_t bufLen, float lat, fl
     gwc.stop();
     return true;
 }
+
 // This function comes as-is from https://github.com/GoatsAndMonkeys/TinyBBS
 static float jsonArrayNth(const char *tag, int n)
 {
