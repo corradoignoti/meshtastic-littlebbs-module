@@ -1,10 +1,10 @@
 /*
- * LittleBBS module – a simple message board that allows users to post short
- * messages to a shared channel.  Messages are broadcast on the primary channel
- * and displayed on all nodes with the module enabled.  To prevent spam, each
- * sender is rate‑limited to one message per minute.
+ * LittleBBS module - a DM command responder for Meshtastic text messages.
+ * It handles utility commands (menu, ping, QTH, meteo forecast) and weather
+ * alerts (/alerts, /meteoalerts) using HTTP APIs when WiFi is available.
  *
- * To enable this module, set `#undef MESHTASTIC_EXCLUDE_LITTLEBBS` in your variant.h file.
+ * To enable this module, set #undef MESHTASTIC_EXCLUDE_LITTLEBBS in your
+ * variant.h file.
  */
 #include "configuration.h"
 #if !MESHTASTIC_EXCLUDE_LITTLEBBS
