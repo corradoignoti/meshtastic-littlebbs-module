@@ -22,6 +22,7 @@ class LittleBBSModule : public SinglePortModule, private concurrency::OSThread
     bool reverseGeocode(float lat, float lon, char *city, size_t cityLen, char *country, size_t countryLen);
     bool geocodeLookup(const char *location, float &lat, float &lon);
     bool getWeatherForecast(char *buf, size_t bufLen, float lat, float lon);
+    String getMeteoAlerts(const char *city);
 };
 extern LittleBBSModule *littleBBSModule;
 #endif

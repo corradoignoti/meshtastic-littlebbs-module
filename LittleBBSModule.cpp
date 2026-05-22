@@ -157,6 +157,49 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
         return ProcessMessage::CONTINUE;
     }
 
+    // Weather alert command. If no city is provided, try to infer sender location.
+    if (strncmp(msg, "/alerts", 7) == 0 || strncmp(msg, "/meteoalerts", 12) == 0) {
+        const char *city = nullptr;
+        if (strncmp(msg, "/alerts", 7) == 0) {
+            city = msg + 7;
+        } else {
+            city = msg + 12;
+        }
+
+        while (*city == ' ' || *city == '\t') {
+            city++;
+        }
+
+        if (*city == '\0') {
+            LOG_INFO("[LittleBBS] Received alerts command with no city, trying to determine sender location");
+            float lat = 0.0f, lon = 0.0f;
+            getRemoteNodeCoordinates(mp, lat, lon);
+            if (lat != 0.0f && lon != 0.0f) {
+                char inferredCity[64] = {0};
+                char country[48] = {0};
+                if (reverseGeocode(lat, lon, inferredCity, sizeof(inferredCity), country, sizeof(country)) && inferredCity[0] != '\0') {
+                    LOG_DEBUG("[LittleBBS] Inferred city '%s' for coordinates lat=%.4f lon=%.4f\n", inferredCity, lat, lon);
+                    String summary = getMeteoAlerts(inferredCity);
+                    String message = "Richiesta di allerte meteo per " + String(inferredCity) + ": " + summary + ".\nDati da https://allertameteo.app/";
+                    sendDm(mp, message.c_str());
+                } else {
+                    sendDm(mp,
+                           "I can't determine your city for alerts. Send /alerts <city> or /meteoalerts <city>.");
+                }
+            } else {
+                LOG_DEBUG("[LittleBBS] Unable to determine coordinates for sender node 0x%x\n", mp.from);
+                sendDm(mp, "I can't determine your location for alerts. Send /alerts <city> or /meteoalerts <city>.");
+            }
+            return ProcessMessage::CONTINUE;
+        }
+
+        String summary = getMeteoAlerts(city);
+        LOG_INFO("[LittleBBS] Sending alerts for city '%s'.", city);
+        String message = "Richiesta di allerte meteo per " + String(city) + ": " + summary + ".\nDati da https://allertameteo.app/";
+        sendDm(mp, message.c_str());
+        return ProcessMessage::CONTINUE;
+    }
+
     // Respond to command the starts with "/meteo".
     // If the command is "/meteo" with no city, try to determine the sender's location and send a weather report for that location
     if (strncmp(msg, "/meteo", 6) == 0) {
@@ -586,6 +629,218 @@ void LittleBBSModule::sendDm(const meshtastic_MeshPacket &rx, const char *text)
     p->decoded.payload.size = len;
     memcpy(p->decoded.payload.bytes, text, len);
     service->sendToMesh(p);
+}
+
+// Parse json from https://allertameteo.app/api/alert/
+// 
+String LittleBBSModule::getMeteoAlerts(const char *city)
+{
+    const char *unknownSummary = "today - unknown | tomorrow - unknown";
+
+    if (!city) {
+        return String(unknownSummary);
+    }
+
+    while (*city == ' ' || *city == '\t') {
+        city++;
+    }
+    if (*city == '\0') {
+        return String(unknownSummary);
+    }
+
+    if (WiFi.status() != WL_CONNECTED) {
+        LOG_DEBUG("[LittleBBS] MeteoAlerts skipped: WiFi not connected. Is WiFi enabled and configured on this node?\n");
+        return String(unknownSummary);
+    }
+
+    const char *cityEnd = city + strlen(city);
+    while (cityEnd > city && (cityEnd[-1] == ' ' || cityEnd[-1] == '\t')) {
+        cityEnd--;
+    }
+    if (cityEnd <= city) {
+        return String(unknownSummary);
+    }
+
+    char encodedCity[192];
+    size_t ep = 0;
+    for (const char *p = city; p < cityEnd && ep < sizeof(encodedCity) - 1; ++p) {
+        const unsigned char c = static_cast<unsigned char>(*p);
+        const bool isSafe = isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~';
+        if (isSafe) {
+            encodedCity[ep++] = static_cast<char>(c);
+            continue;
+        }
+        if (ep + 3 >= sizeof(encodedCity)) {
+            LOG_WARN("[LittleBBS] MeteoAlerts city too long after URL encoding");
+            return String(unknownSummary);
+        }
+        static const char hex[] = "0123456789ABCDEF";
+        encodedCity[ep++] = '%';
+        encodedCity[ep++] = hex[(c >> 4) & 0x0F];
+        encodedCity[ep++] = hex[c & 0x0F];
+    }
+    encodedCity[ep] = '\0';
+    if (encodedCity[0] == '\0') {
+        return String(unknownSummary);
+    }
+
+    char url[320];
+    snprintf(url, sizeof(url), "https://allertameteo.app/api/alert/%s", encodedCity);
+    LOG_DEBUG("[LittleBBS] MeteoAlerts calling URL %s\n", url);
+
+    WiFiClientSecure awc;
+    awc.setInsecure();
+    HTTPClient ahttp;
+    ahttp.setConnectTimeout(2500);
+    ahttp.setTimeout(3500);
+    if (!ahttp.begin(awc, url)) {
+        LOG_DEBUG("[LittleBBS] MeteoAlerts begin() failed");
+        return String(unknownSummary);
+    }
+    ahttp.addHeader("User-Agent", "LittleBBS/1.0");
+
+    int acode = ahttp.GET();
+    if (acode < 0) {
+        LOG_WARN("[LittleBBS] MeteoAlerts - GET failed (%d): %s", acode, ahttp.errorToString(acode).c_str());
+    }
+    LOG_DEBUG("[LittleBBS] MeteoAlerts - HTTP code=%d", acode);
+    if (acode != 200) {
+        ahttp.end();
+        awc.stop();
+        return String(unknownSummary);
+    }
+
+    String body = ahttp.getString();
+    LOG_DEBUG("[LittleBBS] MeteoAlerts - got response len=%u", static_cast<unsigned>(body.length()));
+    ahttp.end();
+    awc.stop();
+
+    if (body.length() == 0) {
+        return String(unknownSummary);
+    }
+
+    static char sbuf[3072];
+    strncpy(sbuf, body.c_str(), sizeof(sbuf) - 1);
+    sbuf[sizeof(sbuf) - 1] = '\0';
+
+    auto skipWs = [](const char *p) {
+        while (p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')) {
+            p++;
+        }
+        return p;
+    };
+
+    auto parseJsonBool = [&](const char *jsonIn, const char *key, bool &value) {
+        if (!jsonIn || !key) {
+            return false;
+        }
+        const char *kp = strstr(jsonIn, key);
+        if (!kp) {
+            return false;
+        }
+        const char *cp = strchr(kp + strlen(key), ':');
+        if (!cp) {
+            return false;
+        }
+        cp = skipWs(cp + 1);
+        if (!cp) {
+            return false;
+        }
+        if (strncmp(cp, "true", 4) == 0) {
+            value = true;
+            return true;
+        }
+        if (strncmp(cp, "false", 5) == 0) {
+            value = false;
+            return true;
+        }
+        return false;
+    };
+
+    auto parseJsonString = [&](const char *jsonIn, const char *key, char *out, size_t outLen) {
+        if (!jsonIn || !key || !out || outLen == 0) {
+            return false;
+        }
+        const char *kp = strstr(jsonIn, key);
+        if (!kp) {
+            return false;
+        }
+        const char *cp = strchr(kp + strlen(key), ':');
+        if (!cp) {
+            return false;
+        }
+        cp = skipWs(cp + 1);
+        if (!cp || *cp != '"') {
+            return false;
+        }
+        cp++;
+
+        size_t i = 0;
+        while (*cp && *cp != '"' && i < outLen - 1) {
+            out[i++] = *cp++;
+        }
+        out[i] = '\0';
+        return i > 0;
+    };
+
+    auto toLowerAscii = [](char *s) {
+        if (!s) {
+            return;
+        }
+        for (size_t i = 0; s[i] != '\0'; ++i) {
+            s[i] = static_cast<char>(tolower(static_cast<unsigned char>(s[i])));
+        }
+    };
+
+    bool success = false;
+    if (!parseJsonBool(sbuf, "\"success\"", success) || !success) {
+        LOG_DEBUG("[LittleBBS] MeteoAlerts - API reports success=false or missing success field");
+        return String(unknownSummary);
+    }
+
+    const char *dataPos = strstr(sbuf, "\"data\"");
+    if (!dataPos) {
+        LOG_DEBUG("[LittleBBS] MeteoAlerts - missing data object");
+        return String(unknownSummary);
+    }
+
+    auto extractColorForDay = [&](const char *dayKey, char *out, size_t outLen) {
+        if (!dayKey || !out || outLen == 0) {
+            return false;
+        }
+        const char *dayPos = strstr(dataPos, dayKey);
+        if (!dayPos) {
+            return false;
+        }
+        const char *allertaPos = strstr(dayPos, "\"allerta\"");
+        if (!allertaPos) {
+            return false;
+        }
+        return parseJsonString(allertaPos, "\"colore\"", out, outLen);
+    };
+
+    char oggiColor[16] = {0};
+    char domaniColor[16] = {0};
+    const bool haveOggi = extractColorForDay("\"oggi\"", oggiColor, sizeof(oggiColor));
+    const bool haveDomani = extractColorForDay("\"domani\"", domaniColor, sizeof(domaniColor));
+
+    if (!haveOggi && !haveDomani) {
+        LOG_DEBUG("[LittleBBS] MeteoAlerts - missing oggi/domani colors");
+        return String(unknownSummary);
+    }
+
+    toLowerAscii(oggiColor);
+    toLowerAscii(domaniColor);
+
+    const char *todayValue = haveOggi ? oggiColor : "unknown";
+    const char *tomorrowValue = haveDomani ? domaniColor : "unknown";
+
+    char result[80];
+    snprintf(result, sizeof(result), "oggi - %s | domani - %s", todayValue, tomorrowValue);
+
+    LOG_DEBUG("[LittleBBS] MeteoAlerts - city='%s' oggi='%s' domani='%s'", city, todayValue, tomorrowValue);
+
+    return String(result);
 }
 
 // Static functions
