@@ -119,8 +119,9 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
         char reply[100];
         if (lat != 0.0f && lon != 0.0f) {
             char city[64];
-            if (reverseGeocode(lat, lon, city, sizeof(city))) {
-                snprintf(reply, sizeof(reply), "My location is %.4f, %.4f near %s.", lat, lon, city);
+            char country[48];
+            if (reverseGeocode(lat, lon, city, sizeof(city), country, sizeof(country))) {
+                snprintf(reply, sizeof(reply), "My location is %.4f, %.4f near %s, %s.", lat, lon, city, country[0] ? country : "Unknown Country");
             } else {
                 snprintf(reply, sizeof(reply), "My location is %.4f, %.4f.", lat, lon);
             }
@@ -210,17 +211,18 @@ void LittleBBSModule::getRemoteNodeCoordinates(const meshtastic_MeshPacket &mp, 
         LOG_DEBUG("[LittleBBS] No coordinates available for node 0x%x\n", mp.from);
     }
 }
-//This function comes as-is from https://github.com/GoatsAndMonkeys/TinyBBS
-bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t cityLen)
+// Reverse geocode coordinates to get city and country using the OpenStreetMap Nominatim API
+// The original function comes from https://github.com/GoatsAndMonkeys/TinyBBS
+bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t cityLen, char *country, size_t countryLen)
 {
     city[0] = '\0';
+    country[0] = '\0';
 
     if (WiFi.status() != WL_CONNECTED) {
         LOG_DEBUG("[LittleBBS] Geocode skipped: WiFi not connected. Is WiFi enabled and configured on this node?\n");
         return false;
     }
 
-    static char gbuf[512];
     char gurl[256];
     snprintf(gurl, sizeof(gurl),
              "https://nominatim.openstreetmap.org/reverse"
@@ -242,30 +244,60 @@ bool LittleBBSModule::reverseGeocode(float lat, float lon, char *city, size_t ci
     if (gcode == 200) {
         String gbody = ghttp.getString();
         LOG_DEBUG("[LittleBBS] Geocode - got response len=%u", static_cast<unsigned>(gbody.length()));
-        strncpy(gbuf, gbody.c_str(), sizeof(gbuf) - 1);
-        gbuf[sizeof(gbuf) - 1] = '\0';
-        const char *keys[] = {"\"city\":\"", "\"town\":\"", "\"village\":\"", "\"county\":\""};
-        for (const char *key : keys) {
-            const char *cp = strstr(gbuf, key);
-            if (cp) {
-                cp += strlen(key);
-                const char *ce = strchr(cp, '"');
-                if (ce) {
-                    size_t len = ce - cp;
-                    if (len >= cityLen)
-                        len = cityLen - 1;
-                    memcpy(city, cp, len);
-                    city[len] = '\0';
-                    break;
-                }
+        const char *json = gbody.c_str();
+        auto extractJsonStringValue = [](const char *jsonIn, const char *fieldName, char *out, size_t outLen) {
+            if (!jsonIn || !fieldName || !out || outLen == 0) {
+                return;
             }
+
+            const char *kp = strstr(jsonIn, fieldName);
+            if (!kp) {
+                return;
+            }
+
+            const char *cp = strchr(kp + strlen(fieldName), ':');
+            if (!cp) {
+                return;
+            }
+            cp++;
+            while (*cp == ' ' || *cp == '\t' || *cp == '\n' || *cp == '\r') {
+                cp++;
+            }
+            if (*cp != '"') {
+                return;
+            }
+            cp++;
+
+            const char *ce = strchr(cp, '"');
+            if (!ce) {
+                return;
+            }
+            size_t len = ce - cp;
+            if (len >= outLen) {
+                len = outLen - 1;
+            }
+            memcpy(out, cp, len);
+            out[len] = '\0';
+        };
+
+        const char *cityKeys[] = {"\"city\"", "\"town\"", "\"village\"", "\"county\""};
+        for (const char *key : cityKeys) {
+            extractJsonStringValue(json, key, city, cityLen);
+            if (city[0] != '\0') {
+                break;
+            }
+        }
+
+        extractJsonStringValue(json, "\"country\"", country, countryLen);
+        if (country[0] != '\0') {
+            LOG_DEBUG("[LittleBBS] Geocode - got city='%s' country='%s'\n", city, country);
         }
     } else {
         LOG_DEBUG("[LittleBBS] Geocode - HTTP error %d\n", gcode);
     }
     ghttp.end();
     gwc.stop();
-    return city[0] != '\0';
+    return city[0] != '\0' || country[0] != '\0';
 }
 
 // Get a weather report to be returned for a /meteo command.
@@ -378,9 +410,10 @@ bool LittleBBSModule::getWeatherForecast(char *buf, size_t bufLen, float lat, fl
     }
 
     char city[48] = {0};
+    char country[48] = {0};
 
-    if (reverseGeocode(lat, lon, city, sizeof(city))) {
-        LOG_DEBUG("[LittleBBS] MeteoForecast - reverse geocoded coordinates lat=%.4f lon=%.4f to city '%s'\n", lat, lon, city);
+    if (reverseGeocode(lat, lon, city, sizeof(city), country, sizeof(country))) {
+        LOG_DEBUG("[LittleBBS] MeteoForecast - reverse geocoded coordinates lat=%.4f lon=%.4f to city '%s', country '%s'\n", lat, lon, city, country);
     } else {
         LOG_DEBUG("[LittleBBS] MeteoForecast - unable to reverse geocode coordinates lat=%.4f lon=%.4f\n", lat, lon);
         return false;
@@ -388,7 +421,7 @@ bool LittleBBSModule::getWeatherForecast(char *buf, size_t bufLen, float lat, fl
 
     size_t pos = 0;
     if (city[0])
-        pos += snprintf(buf + pos, bufLen - pos, "TinyBBS 5Day 4Cast (%s):\n", city);
+        pos += snprintf(buf + pos, bufLen - pos, "TinyBBS 5Day 4Cast (%s, %s):\n", city, country[0] ? country : "Unknown Country");
     else
         pos += snprintf(buf + pos, bufLen - pos, "TinyBBS 5Day 4Cast:\n");
     for (int i = 0; i < 6 && pos < bufLen - 1; i++) {
