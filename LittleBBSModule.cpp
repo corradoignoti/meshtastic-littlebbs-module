@@ -157,7 +157,7 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
         return ProcessMessage::CONTINUE;
     }
 
-    // Respond to command the starts with "/meteo" sending a fake weather report (replace with real API call in future)
+    // Respond to command the starts with "/meteo".
     // If the command is "/meteo" with no city, try to determine the sender's location and send a weather report for that location
     if (strncmp(msg, "/meteo", 6) == 0) {
         const char *city = msg + 6;
@@ -551,6 +551,45 @@ bool LittleBBSModule::getWeatherForecast(char *buf, size_t bufLen, float lat, fl
     return true;
 }
 
+// Create main BBS menu and send it back to the sender via DM
+void LittleBBSModule::sendMainMenu(const meshtastic_MeshPacket &mp)
+{
+    char menu[200];
+    snprintf(menu, sizeof(menu),
+             "Welcome to the LittleBBS!\n\n"
+             "[P]ing\n"
+             "[T]est\n"
+             "[Q]TH?\n"
+             "[M]eteo\n\n"
+             "Reply with the letter in brackets to get a response.");
+    sendDm(mp, menu);
+}
+
+// Send a direct message back to the originating node.
+void LittleBBSModule::sendDm(const meshtastic_MeshPacket &rx, const char *text)
+{
+    if (!text)
+        return;
+    meshtastic_MeshPacket *p = allocDataPacket();
+    if (!p) {
+        LOG_WARN("[LittleBBS] Unable to allocate reply packet");
+        return;
+    }
+    p->to = rx.from;
+    p->channel = rx.channel;
+    p->want_ack = false;
+    p->decoded.want_response = false;
+    size_t len = strlen(text);
+    if (len > sizeof(p->decoded.payload.bytes)) {
+        len = sizeof(p->decoded.payload.bytes);
+    }
+    p->decoded.payload.size = len;
+    memcpy(p->decoded.payload.bytes, text, len);
+    service->sendToMesh(p);
+}
+
+// Static functions
+
 // This function comes as-is from https://github.com/GoatsAndMonkeys/TinyBBS
 static float jsonArrayNth(const char *tag, int n)
 {
@@ -617,43 +656,6 @@ static const char *wmoToEmoji(int code)
     if (code <= 86)
         return "\xE2\x9D\x84"; // ❄
     return "\xE2\x9B\x88";     // ⛈
-}
-
-// Create main BBS menu and send it back to the sender via DM
-void LittleBBSModule::sendMainMenu(const meshtastic_MeshPacket &mp)
-{
-    char menu[200];
-    snprintf(menu, sizeof(menu),
-             "Welcome to the LittleBBS!\n\n"
-             "[P]ing\n"
-             "[T]est\n"
-             "[Q]TH?\n"
-             "[M]eteo\n\n"
-             "Reply with the letter in brackets to get a response.");
-    sendDm(mp, menu);
-}
-
-// Send a direct message back to the originating node.
-void LittleBBSModule::sendDm(const meshtastic_MeshPacket &rx, const char *text)
-{
-    if (!text)
-        return;
-    meshtastic_MeshPacket *p = allocDataPacket();
-    if (!p) {
-        LOG_WARN("[LittleBBS] Unable to allocate reply packet");
-        return;
-    }
-    p->to = rx.from;
-    p->channel = rx.channel;
-    p->want_ack = false;
-    p->decoded.want_response = false;
-    size_t len = strlen(text);
-    if (len > sizeof(p->decoded.payload.bytes)) {
-        len = sizeof(p->decoded.payload.bytes);
-    }
-    p->decoded.payload.size = len;
-    memcpy(p->decoded.payload.bytes, text, len);
-    service->sendToMesh(p);
 }
 
 #endif
