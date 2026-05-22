@@ -1,6 +1,6 @@
 # meshtastic-littlebbs-module
 
-A Meshtastic firmware module that provides a simple BBS (Bulletin Board System) over LoRa mesh. Users can send direct text messages to any node running this module to access commands, including a `/meteo` weather forecast feature based on the node's GPS coordinates.
+A Meshtastic firmware module that provides a simple BBS (Bulletin Board System) over LoRa mesh. Users can send direct text messages to any node running this module to access commands, including `/meteo` weather forecasts and `/alerts` weather-alert summaries.
 
 *** This is an experimental module and in it's in a very early stage of developmnet. Use it at your own risk. ***
 
@@ -8,8 +8,25 @@ A Meshtastic firmware module that provides a simple BBS (Bulletin Board System) 
 
 - Main menu via DM interaction
 - `/meteo` — weather forecast (uses reverse geocoding + Open-Meteo API)
+- `/alerts` or `/meteoalerts` — weather-alert status by city (uses allertameteo API)
+- Alert output format: `today - <color> | tomorrow - <color>`
 - Rate limiting: one message per minute per sender
 - ESP32 only (requires WiFi for HTTP/weather features)
+
+## Commands
+
+- `/menu` - show the module menu
+- `/meteo <city>` - show weather forecast for a city
+- `/meteo` - infer sender location (when available) and show weather forecast
+- `/alerts <city>` - show weather alerts for a city
+- `/meteoalerts <city>` - alias of `/alerts <city>`
+- `/alerts` or `/meteoalerts` - infer sender city (when available) and show alerts
+
+Example alert response:
+
+```text
+oggi - verde | domani - gialla
+```
 
 ## Usage
 
