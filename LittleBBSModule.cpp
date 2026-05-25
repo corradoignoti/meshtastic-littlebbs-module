@@ -91,7 +91,9 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
 
     if (strcmp(msg, "/help") == 0 || strcmp(msg, "/bbs") == 0) {
         LOG_INFO("[LittleBBS] Sending help message");
-        sendDm(mp, "Hello I'm a LittleBBS. Send /menu to see the main menu.");
+        sendDm(mp, "Hello I'm a LittleBBS. Send /menu to see the main menu.\n"
+        "I'm a bot running as a module in Meshtastic Firmware.\n"
+        "Source and info on https://github.com/corradoignoti/meshtastic-littlebbs-module");
         return ProcessMessage::CONTINUE;
     }
 
