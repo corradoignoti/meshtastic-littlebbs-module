@@ -150,15 +150,6 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
         return ProcessMessage::CONTINUE;
     }
 
-    // Respond to "m" or "M" showing how to get meteo info
-    if (strcmp(msg, "M") == 0 || strcmp(msg, "m") == 0) {
-        LOG_INFO("[LittleBBS] Received meteo command, sending status");
-        char reply[100];
-        snprintf(reply, sizeof(reply), "Send /meteo <city> to get the weather for that city.");
-        sendDm(mp, reply);
-        return ProcessMessage::CONTINUE;
-    }
-
     // Weather alert command. If no city is provided, try to infer sender location.
     if (strncmp(msg, "/alerts", 7) == 0 || strncmp(msg, "/meteoalerts", 12) == 0 || strcmp(msg, "A") == 0 || strcmp(msg, "a") == 0) {
         const char *city = nullptr;
@@ -204,7 +195,7 @@ ProcessMessage LittleBBSModule::handleReceived(const meshtastic_MeshPacket &mp)
 
     // Respond to command the starts with "/meteo".
     // If the command is "/meteo" with no city, try to determine the sender's location and send a weather report for that location
-    if (strncmp(msg, "/meteo", 6) == 0) {
+    if (strncmp(msg, "/meteo", 6) == 0 || strcmp(msg, "M") == 0 || strcmp(msg, "m") == 0) {
         const char *city = msg + 6;
         while (*city == ' ' || *city == '\t')
             city++;
